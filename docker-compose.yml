@@ -1,0 +1,73 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  web:
+    build: .
+    command: bash -c 'while !</dev/tcp/db/5432; do sleep 1; done; uvicorn app.main:app --host 0.0.0.0'
+    volumes:
+      - .:/app
+    expose:
+      - 8000
+    environment:
+      - DATABASE_URL=postgresql://fastapi_traefik:fastapi_traefik@db:5432/fastapi_traefik
+    depends_on:
+      - db
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fastapi.rule=Host(`fastapi.localhost`)"
+      - "traefik.http.routers.emulator.entrypoints=web"
+    networks:
+      - traefik-local
+
+  emulator:
+    image: budtmo/docker-android-x86-10.0
+    container_name: jornada-estudante-android-nexus-10
+    privileged: true
+    ports:
+      # - 6080:6080
+      - 4723:4723
+      - 5554:5554
+      - 5555:5555
+    environment:
+      - DEVICE=Nexus 5
+      - EMULATOR_ARGS=-partition-size 4096 -no-boot-anim -accel on -gpu auto
+    volumes:
+      - "$HOME/Downloads:/root/tmp/files"
+    networks:
+      - traefik-local
+    extra_hosts: 
+      host.docker.internal: host-gateway
+
+  db:
+    image: postgres:13-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    expose:
+      - 5432
+    environment:
+      - POSTGRES_USER=fastapi_traefik
+      - POSTGRES_PASSWORD=fastapi_traefik
+      - POSTGRES_DB=fastapi_traefik
+    networks:
+      - traefik-local
+
+  traefik:
+    image: traefik:v2.8
+    ports:
+      - 8008:80
+      - 8081:8080
+      - 6080:8002
+    volumes:
+      - "./traefik.dev.toml:/etc/traefik/traefik.toml"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - traefik-local
+
+volumes:
+  postgres_data:
+
+networks:
+  traefik-local:
+    driver: bridge
